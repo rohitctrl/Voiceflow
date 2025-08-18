@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "build:netlify": "npx prisma generate && npm run build",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",

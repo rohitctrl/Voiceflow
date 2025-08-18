@@ -24,19 +24,54 @@ export function useVoiceRecorder() {
 
   const initializeAudioContext = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Audio recording is not supported in this browser')
+      }
+
+      // Request audio with enhanced settings for better recording quality
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+        } 
+      })
       streamRef.current = stream
 
-      audioContextRef.current = new AudioContext()
+      // Initialize Web Audio API for waveform visualization
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      
+      // Resume audio context if it's suspended (required in some browsers)
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume()
+      }
+      
       const source = audioContextRef.current.createMediaStreamSource(stream)
       analyserRef.current = audioContextRef.current.createAnalyser()
       analyserRef.current.fftSize = 256
+      analyserRef.current.smoothingTimeConstant = 0.8
       source.connect(analyserRef.current)
 
       return stream
     } catch (error) {
       console.error('Error accessing microphone:', error)
-      throw error
+      let errorMessage = 'Failed to access microphone'
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          errorMessage = 'Microphone access denied. Please allow microphone permission and try again.'
+        } else if (error.name === 'NotFoundError') {
+          errorMessage = 'No microphone found. Please connect a microphone and try again.'
+        } else if (error.name === 'NotReadableError') {
+          errorMessage = 'Microphone is busy or not available. Please try again.'
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
+      throw new Error(errorMessage)
     }
   }, [])
 
@@ -58,7 +93,22 @@ export function useVoiceRecorder() {
     try {
       const stream = await initializeAudioContext()
       
-      mediaRecorderRef.current = new MediaRecorder(stream)
+      // Determine the best audio format to use (prefer OPUS for best quality/compression)
+      let mimeType = 'audio/webm'
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        mimeType = 'audio/ogg;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4'
+      } else if (MediaRecorder.isTypeSupported('audio/wav')) {
+        mimeType = 'audio/wav'
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(stream, { 
+        mimeType,
+        audioBitsPerSecond: 128000 // 128kbps for good quality
+      })
       audioChunksRef.current = []
 
       mediaRecorderRef.current.ondataavailable = (event) => {
@@ -68,7 +118,7 @@ export function useVoiceRecorder() {
       }
 
       mediaRecorderRef.current.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType })
         setRecordingState(prev => ({
           ...prev,
           audioBlob,
@@ -76,16 +126,28 @@ export function useVoiceRecorder() {
           isPaused: false,
         }))
         
-        // Clean up
+        // Clean up streams and contexts
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
         }
-        if (audioContextRef.current) {
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
           audioContextRef.current.close()
+          audioContextRef.current = null
         }
       }
 
-      mediaRecorderRef.current.start()
+      mediaRecorderRef.current.onerror = (event) => {
+        console.error('MediaRecorder error:', event)
+        setRecordingState(prev => ({
+          ...prev,
+          isRecording: false,
+          isPaused: false,
+        }))
+      }
+
+      // Start recording with small time slices for better responsiveness
+      mediaRecorderRef.current.start(100)
       startTimeRef.current = Date.now()
       
       setRecordingState(prev => ({
@@ -95,7 +157,7 @@ export function useVoiceRecorder() {
         duration: 0,
       }))
 
-      // Start duration timer
+      // Start duration timer and waveform updates
       intervalRef.current = setInterval(() => {
         const elapsed = (Date.now() - startTimeRef.current) / 1000
         setRecordingState(prev => ({

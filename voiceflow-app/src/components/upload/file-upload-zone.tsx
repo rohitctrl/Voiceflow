@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useFileUpload } from '@/hooks/useFileUpload'
-import { Upload, X, File, AlertCircle } from 'lucide-react'
+import { Upload, X, File, AlertCircle, RotateCcw } from 'lucide-react'
 import { formatFileSize } from '@/lib/utils'
 
 interface FileUploadZoneProps {
   onFilesSelected: (files: File[]) => void
   onUploadComplete?: (files: File[]) => void
+  onUploadError?: (error: string) => void
   maxFiles?: number
   maxSize?: number
   className?: string
@@ -18,6 +19,7 @@ interface FileUploadZoneProps {
 export function FileUploadZone({ 
   onFilesSelected, 
   onUploadComplete,
+  onUploadError,
   maxFiles = 5,
   maxSize = 25 * 1024 * 1024,
   className 
@@ -32,11 +34,13 @@ export function FileUploadZone({
     removeFile,
     clearAllFiles,
     uploadFiles,
+    retryFile,
   } = useFileUpload({
     maxFiles,
     maxSize,
     onFilesAccepted: onFilesSelected,
     onUploadComplete,
+    onUploadError,
   })
 
   return (
@@ -83,7 +87,7 @@ export function FileUploadZone({
             </p>
             
             <p className="text-xs text-muted-foreground">
-              Supports MP3, WAV, M4A, WebM up to {formatFileSize(maxSize)}
+              Supports MP3, WAV, M4A, WebM, OPUS, OGG up to {formatFileSize(maxSize)}
             </p>
           </div>
         </CardContent>
@@ -128,12 +132,19 @@ export function FileUploadZone({
                     <p className="text-sm font-medium truncate">
                       {uploadedFile.file.name}
                     </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatFileSize(uploadedFile.file.size)}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">
+                        {formatFileSize(uploadedFile.file.size)}
+                      </p>
+                      {uploadedFile.retries && uploadedFile.retries > 0 && (
+                        <p className="text-xs text-orange-500">
+                          Retry {uploadedFile.retries}/3
+                        </p>
+                      )}
+                    </div>
                     
                     {/* Progress Bar */}
-                    {isUploading && (
+                    {isUploading && !uploadedFile.error && (
                       <div className="mt-1 w-full bg-muted rounded-full h-1">
                         <motion.div
                           className="bg-primary h-1 rounded-full"
@@ -143,10 +154,29 @@ export function FileUploadZone({
                         />
                       </div>
                     )}
+                    
+                    {/* Error Message */}
+                    {uploadedFile.error && (
+                      <p className="text-xs text-destructive mt-1">
+                        {uploadedFile.error}
+                      </p>
+                    )}
                   </div>
 
                   {uploadedFile.error && (
-                    <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
+                    <div className="flex items-center space-x-1 flex-shrink-0">
+                      <AlertCircle className="h-4 w-4 text-destructive" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => retryFile(uploadedFile.id)}
+                        disabled={isUploading}
+                        title="Retry upload"
+                        className="p-1"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                      </Button>
+                    </div>
                   )}
 
                   <Button

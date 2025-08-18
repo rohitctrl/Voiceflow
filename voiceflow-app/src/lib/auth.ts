@@ -1,26 +1,30 @@
 import { NextAuthOptions } from 'next-auth'
 import { PrismaAdapter } from '@auth/prisma-adapter'
+import { Adapter } from 'next-auth/adapters'
 import GoogleProvider from 'next-auth/providers/google'
 import GitHubProvider from 'next-auth/providers/github'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from './prisma'
 
 export const authOptions: NextAuthOptions = {
-  // Only use adapter for OAuth providers, not for credentials
-  adapter: process.env.GOOGLE_CLIENT_ID || process.env.GITHUB_CLIENT_ID ? PrismaAdapter(prisma) as any : undefined,
+  // Use adapter when OAuth providers are configured
+  adapter: (process.env.GOOGLE_CLIENT_ID || process.env.GITHUB_CLIENT_ID) 
+    ? PrismaAdapter(prisma) as Adapter
+    : undefined,
+  debug: false, // Disable debug logs
   providers: [
-    // Demo credentials provider for development/testing
+    // Demo credentials provider - always available
     CredentialsProvider({
       id: 'demo',
-      name: 'Demo User',
+      name: 'Demo',
       credentials: {},
       async authorize() {
-        // Return a demo user for testing
+        // Always return a demo user - no credentials needed
         return {
-          id: 'demo-user-id',
+          id: 'demo-user-123',
           name: 'Demo User',
-          email: 'demo@voiceflow.com',
-          image: '/api/placeholder/32/32'
+          email: 'demo@voiceflow.app',
+          image: null
         }
       },
     }),
@@ -29,6 +33,13 @@ export const authOptions: NextAuthOptions = {
       GoogleProvider({
         clientId: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        authorization: {
+          params: {
+            prompt: 'consent',
+            access_type: 'offline',
+            response_type: 'code'
+          }
+        }
       })
     ] : []),
     ...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET ? [
@@ -57,6 +68,9 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id as string
       }
       return session
+    },
+    async signIn() {
+      return true
     },
   },
   secret: process.env.NEXTAUTH_SECRET,

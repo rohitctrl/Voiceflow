@@ -2,9 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { transcribeAudioDetailed } from '@/lib/openai'
+import { transcribeRateLimit } from '@/lib/rate-limiter'
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting
+    const rateLimitResult = await transcribeRateLimit(request)
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded' },
+        { 
+          status: 429,
+          headers: {
+            'X-RateLimit-Remaining': '0',
+            'X-RateLimit-Reset': rateLimitResult.resetTime?.toString() || ''
+          }
+        }
+      )
+    }
+
     const session = await getServerSession(authOptions)
     
     if (!session?.user?.id) {
@@ -19,7 +35,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
-    const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/m4a', 'audio/webm']
+    const allowedTypes = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/m4a', 'audio/webm', 'audio/opus', 'audio/ogg']
     if (!allowedTypes.includes(audioFile.type)) {
       return NextResponse.json({ error: 'Invalid file type' }, { status: 400 })
     }

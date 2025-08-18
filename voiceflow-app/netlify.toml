@@ -1,0 +1,57 @@
+[build]
+  command = "npm run netlify:build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--legacy-peer-deps"
+
+# API Routes will run as Netlify Functions with increased memory/timeout
+[functions]
+  node_bundler = "esbuild"
+  # Increase timeout for AI processing
+  timeout = "30s"
+  memory = "1769MB"
+
+# Large file upload support
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+# File upload size limits
+[[headers]]
+  for = "/api/audio/*"
+  [headers.values]
+    Content-Length = "52428800"  # 50MB
+
+# Security headers  
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block" 
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; media-src 'self' blob:;"
+
+# Cache optimization for static assets
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/static/*"
+  [headers.values] 
+    Cache-Control = "public, max-age=31536000, immutable"

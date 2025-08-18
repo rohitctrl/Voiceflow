@@ -1,14 +1,31 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { VoiceRecorder } from '@/components/voice/voice-recorder'
-import { FileUploadZone } from '@/components/upload/file-upload-zone'
-import { RecordingsList } from '@/components/dashboard/recordings-list'
 import { RecordingWithUser } from '@/types'
 import { Mic, Upload, FileAudio, Sparkles } from 'lucide-react'
+import { 
+  VoiceRecorderSkeleton, 
+  FileUploadSkeleton, 
+  RecordingsListSkeleton 
+} from '@/components/ui/skeletons'
+
+// Lazy load heavy components
+const VoiceRecorder = dynamic(() => import('@/components/voice/voice-recorder').then(mod => ({ default: mod.VoiceRecorder })), {
+  loading: () => <VoiceRecorderSkeleton />,
+  ssr: false // Disable SSR for audio components
+})
+
+const FileUploadZone = dynamic(() => import('@/components/upload/file-upload-zone').then(mod => ({ default: mod.FileUploadZone })), {
+  loading: () => <FileUploadSkeleton />
+})
+
+const RecordingsList = dynamic(() => import('@/components/dashboard/recordings-list').then(mod => ({ default: mod.RecordingsList })), {
+  loading: () => <RecordingsListSkeleton />
+})
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'record' | 'upload' | 'library'>('record')
@@ -28,7 +45,7 @@ export default function DashboardPage() {
       const transcribeFormData = new FormData()
       transcribeFormData.append('audio', audioFile)
 
-      const transcribeResponse = await fetch('/api/transcribe', {
+      const transcribeResponse = await fetch('/api/transcribe-local', {
         method: 'POST',
         body: transcribeFormData,
       })
@@ -39,8 +56,8 @@ export default function DashboardPage() {
 
       const transcriptionData = await transcribeResponse.json()
 
-      // Then, process the transcript with Claude
-      const processResponse = await fetch('/api/process-text', {
+      // Then, process the transcript with local Ollama
+      const processResponse = await fetch('/api/process-text-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript: transcriptionData.transcript }),
@@ -85,8 +102,18 @@ export default function DashboardPage() {
   }
 
   const handleFilesSelected = async (files: File[]) => {
-    console.log('Files selected:', files)
-    // Handle file upload processing here
+    setIsProcessing(true)
+  }
+
+  const handleUploadComplete = (files: File[]) => {
+    setIsProcessing(false)
+    setActiveTab('library')
+  }
+
+  const handleUploadError = (error: string) => {
+    console.error('Upload error:', error)
+    setIsProcessing(false)
+    alert(`Upload error: ${error}`)
   }
 
   const tabs = [
@@ -154,10 +181,12 @@ export default function DashboardPage() {
         >
           {activeTab === 'record' && (
             <div className="text-center space-y-6">
-              <VoiceRecorder
-                onRecordingComplete={handleRecordingComplete}
-                className="mx-auto"
-              />
+              <Suspense fallback={<VoiceRecorderSkeleton />}>
+                <VoiceRecorder
+                  onRecordingComplete={handleRecordingComplete}
+                  className="mx-auto"
+                />
+              </Suspense>
               
               {isProcessing && (
                 <motion.div
@@ -174,19 +203,32 @@ export default function DashboardPage() {
 
           {activeTab === 'upload' && (
             <div className="max-w-2xl mx-auto">
-              <FileUploadZone
-                onFilesSelected={handleFilesSelected}
-                onUploadComplete={(files) => {
-                  console.log('Upload complete:', files)
-                  setActiveTab('library')
-                }}
-              />
+              <Suspense fallback={<FileUploadSkeleton />}>
+                <FileUploadZone
+                  onFilesSelected={handleFilesSelected}
+                  onUploadComplete={handleUploadComplete}
+                  onUploadError={handleUploadError}
+                />
+              </Suspense>
+              
+              {isProcessing && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center justify-center space-x-2 text-primary mt-6"
+                >
+                  <Sparkles className="h-5 w-5 animate-spin" />
+                  <span>Processing uploaded files with AI...</span>
+                </motion.div>
+              )}
             </div>
           )}
 
           {activeTab === 'library' && (
             <div className="space-y-6">
-              <RecordingsList onRecordingSelect={setSelectedRecording} />
+              <Suspense fallback={<RecordingsListSkeleton />}>
+                <RecordingsList onRecordingSelect={setSelectedRecording} />
+              </Suspense>
             </div>
           )}
         </motion.div>

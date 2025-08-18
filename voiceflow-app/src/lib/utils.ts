@@ -40,6 +40,10 @@ export function getAudioMimeType(file: File): string {
       return 'audio/mp4'
     case 'webm':
       return 'audio/webm'
+    case 'opus':
+      return 'audio/opus'
+    case 'ogg':
+      return 'audio/ogg'
     default:
       return 'audio/mpeg'
   }

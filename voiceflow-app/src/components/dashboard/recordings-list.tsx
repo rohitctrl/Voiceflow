@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,8 +15,6 @@ import {
   Play, 
   Pause, 
   Trash2, 
-  Edit, 
-  MoreHorizontal,
   FileAudio 
 } from 'lucide-react'
 
@@ -30,11 +28,7 @@ export function RecordingsList({ onRecordingSelect }: RecordingsListProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [playingId, setPlayingId] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchRecordings()
-  }, [searchQuery])
-
-  const fetchRecordings = async () => {
+  const fetchRecordings = useCallback(async () => {
     try {
       setIsLoading(true)
       const params = new URLSearchParams()
@@ -50,7 +44,11 @@ export function RecordingsList({ onRecordingSelect }: RecordingsListProps) {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [searchQuery])
+
+  useEffect(() => {
+    fetchRecordings()
+  }, [fetchRecordings])
 
   const handlePlayPause = (recordingId: string) => {
     if (playingId === recordingId) {
